@@ -3,6 +3,8 @@
 
 typedef enum { LEPT_NULL, LEPT_FALSE, LEPT_TRUE, LEPT_NUMBER, LEPT_STRING, LEPT_ARRAY, LEPT_OBJECT } lept_type;
 
+// 上一单元的 null、false、true 在解析后，我们只需把它们存储为类型。
+// 但对于数字，我们要考虑怎么存储解析后的结果。
 typedef struct {
     double n;
     lept_type type;
