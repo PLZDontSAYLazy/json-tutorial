@@ -1,3 +1,8 @@
+#ifdef _WINDOWS
+#define _CRTDBG_MAP_ALLOC
+#include <crtdbg.h>
+#endif               /* 上面是引入检查CRT内存泄漏的代码 */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,6 +12,7 @@ static int main_ret = 0;
 static int test_count = 0;
 static int test_pass = 0;
 
+// __FILE__ 来获取行号
 #define EXPECT_EQ_BASE(equality, expect, actual, format) \
     do {\
         test_count++;\
@@ -24,6 +30,8 @@ static int test_pass = 0;
     EXPECT_EQ_BASE(sizeof(expect) - 1 == (alength) && memcmp(expect, actual, alength) == 0, expect, actual, "%s")
 #define EXPECT_TRUE(actual) EXPECT_EQ_BASE((actual) != 0, "true", "false", "%s")
 #define EXPECT_FALSE(actual) EXPECT_EQ_BASE((actual) == 0, "false", "true", "%s")
+
+// 下面的每一种测试函数都请注意v的分配以及释放空间
 
 static void test_parse_null() {
     lept_value v;
@@ -107,10 +115,11 @@ static void test_parse_number() {
 static void test_parse_string() {
     TEST_STRING("", "\"\"");
     TEST_STRING("Hello", "\"Hello\"");
-#if 0
+
     TEST_STRING("Hello\nWorld", "\"Hello\\nWorld\"");
+    TEST_STRING("\" / \b \f \n \r \t", "\"\\\" / \\b \\f \\n \\r \\t\"");
     TEST_STRING("\" \\ / \b \f \n \r \t", "\"\\\" \\\\ \\/ \\b \\f \\n \\r \\t\"");
-#endif
+
 }
 
 #define TEST_ERROR(error, json)\
@@ -163,19 +172,20 @@ static void test_parse_missing_quotation_mark() {
 }
 
 static void test_parse_invalid_string_escape() {
-#if 0
+
     TEST_ERROR(LEPT_PARSE_INVALID_STRING_ESCAPE, "\"\\v\"");
     TEST_ERROR(LEPT_PARSE_INVALID_STRING_ESCAPE, "\"\\'\"");
     TEST_ERROR(LEPT_PARSE_INVALID_STRING_ESCAPE, "\"\\0\"");
+    TEST_ERROR(LEPT_PARSE_INVALID_STRING_ESCAPE, "\"\\a\"");
     TEST_ERROR(LEPT_PARSE_INVALID_STRING_ESCAPE, "\"\\x12\"");
-#endif
+
 }
 
 static void test_parse_invalid_string_char() {
-#if 0
+
     TEST_ERROR(LEPT_PARSE_INVALID_STRING_CHAR, "\"\x01\"");
     TEST_ERROR(LEPT_PARSE_INVALID_STRING_CHAR, "\"\x1F\"");
-#endif
+
 }
 
 static void test_access_null() {
@@ -190,10 +200,29 @@ static void test_access_null() {
 static void test_access_boolean() {
     /* \TODO */
     /* Use EXPECT_TRUE() and EXPECT_FALSE() */
+    lept_value v;
+
+    lept_init(&v);
+    lept_set_string(&v, "false", 5);
+    lept_set_boolean(&v, 0);
+    EXPECT_FALSE(lept_get_boolean(&v));
+    lept_free(&v);
+
+    lept_init(&v);
+    lept_set_string(&v, "true", 4);
+    lept_set_boolean(&v, 1);
+    EXPECT_TRUE(lept_get_boolean(&v));
+    lept_free(&v);
 }
 
 static void test_access_number() {
     /* \TODO */
+    lept_value v;
+    lept_init(&v);
+    lept_set_string(&v, "a", 1);
+    lept_set_number(&v, 0.123);
+    EXPECT_EQ_DOUBLE(0.123, lept_get_number(&v));
+    lept_free(&v);
 }
 
 static void test_access_string() {
@@ -227,7 +256,11 @@ static void test_parse() {
 }
 
 int main() {
+    #ifdef _WINDOWS
+        _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+    #endif
     test_parse();
     printf("%d/%d (%3.2f%%) passed\n", test_pass, test_count, test_pass * 100.0 / test_count);
+  
     return main_ret;
 }

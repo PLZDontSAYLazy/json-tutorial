@@ -5,6 +5,8 @@
 
 typedef enum { LEPT_NULL, LEPT_FALSE, LEPT_TRUE, LEPT_NUMBER, LEPT_STRING, LEPT_ARRAY, LEPT_OBJECT } lept_type;
 
+// 为了节省内存空间使用union
+// s是字符类型 加上size_t表明长度
 typedef struct {
     union {
         struct { char* s; size_t len; }s;  /* string: null-terminated string, string length */
@@ -24,6 +26,8 @@ enum {
     LEPT_PARSE_INVALID_STRING_CHAR
 };
 
+// 由于每种函数会检查 v 的类型
+// 在调用所有访问函数之前，我们必须初始化该类型。所以我们加入 lept_init(v)，
 #define lept_init(v) do { (v)->type = LEPT_NULL; } while(0)
 
 int lept_parse(lept_value* v, const char* json);
