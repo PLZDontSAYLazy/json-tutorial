@@ -8,6 +8,8 @@
 #include <math.h>    /* HUGE_VAL */
 #include <stdlib.h>  /* NULL, malloc(), realloc(), free(), strtod() */
 #include <string.h>  /* memcpy() */
+#include <stdint.h>  /* int32_t */
+#include <uchar.h>   /* char8_t */
 
 #ifndef LEPT_PARSE_STACK_INIT_SIZE
 #define LEPT_PARSE_STACK_INIT_SIZE 256
@@ -89,14 +91,101 @@ static int lept_parse_number(lept_context* c, lept_value* v) {
     c->json = p;
     return LEPT_PARSE_OK;
 }
-
+/*
+解析 4 位十六进数字】
+p 有效数字必须4位
+p 格式为0123\"
+*/
 static const char* lept_parse_hex4(const char* p, unsigned* u) {
     /* \TODO */
+    int len = 0;
+    const char* tmp = p;
+    unsigned int factor = 1;
+    // 原代码：
+    while (*p != '\0' && *p != '\"' && *p != '\\') {
+        if (len == 4)
+            break;
+        ++len;
+        ++p;
+    }
+    if (len < 4) {
+        return NULL;
+    }
+    *u = 0;
+    len -= 1;
+    for (; len >= 0; --len) {
+        if (tmp[len] >= '0' && tmp[len] <= '9')
+            *u += (tmp[len] - '0') * factor;
+        else if ( (tmp[len] >= 'A' && tmp[len] <= 'F') || (tmp[len] >= 'a' && tmp[len] <= 'f')) {
+            if(tmp[len] >= 'A' && tmp[len] <= 'F')
+                *u += (10 + tmp[len] - 'A') * factor;
+            else 
+                *u += (10 + tmp[len] - 'a') * factor;
+        }
+        else
+            return NULL;
+        factor *= 16;
+    }
     return p;
 }
-
+/*
+实现UTF-8编码
+得到码点后转换为UTF-8的数据
+根据不同的码点范围得到不同的结果
+并把原来的字符串转化为UTF-8格式
+对栈内的字符进行修改
+传入进来的c的栈顶一定是UTF-8字符的开始位置
+比如"\"Hello\\u0000World\"" 栈顶此时的字符为\\u0000前面的o
+*/ 
 static void lept_encode_utf8(lept_context* c, unsigned u) {
     /* \TODO */
+    assert(u >= 0x0000 && u <= 0x10FFFF);
+    // 下面根据u的大小来转化位不同的UTF-8格式
+    // 0x7F 1111111 7位
+    if (u >= 0x0000 && u <= 0x7F) {
+        unsigned char bytes_1 = u;
+        PUTC(c, bytes_1);
+    }
+    // 0x7FF 11111111111 11位
+    else if (u >= 0x0080 && u <= 0x07FF) {
+        // 无符号8位字符
+        unsigned char bytes_1 = 0;
+        unsigned char bytes_2 = 0;
+        bytes_1 = (0xC0 | ((u >> 6) & 0xFF));  // 0xC0 11000000  0xFF 11111111
+        bytes_2 = (0x80 | ( u & 0x3F));        // 0x80 10000000  0x3F 00111111
+        
+        PUTC(c, bytes_1);
+        PUTC(c, bytes_2);
+    }
+    // 0xFFFF 1111111111111111 16位
+    else if (u >= 0x0800 && u <= 0xFFFF) {
+        unsigned char bytes_1 = 0;
+        unsigned char bytes_2 = 0;
+        unsigned char bytes_3 = 0;
+        bytes_1 = (0xE0 | ((u >> 12) & 0xFF)); // 0xE0 11100000  0xFF 11111111
+        bytes_2 = (0x80 | ((u >> 6) & 0x3F));  // 0x80 10000000  0x3F 00111111
+        bytes_3 = (0x80 | ( u & 0x3F));        // 0x80 10000000  0x3F 00111111
+
+        PUTC(c, bytes_1);
+        PUTC(c, bytes_2);
+        PUTC(c, bytes_3);
+    }
+    // 0x10FFFF 100001111111111111111 21位
+    else if (u >= 0x10000 && u <= 0x10FFFF) {
+        unsigned char bytes_1 = 0;
+        unsigned char bytes_2 = 0;
+        unsigned char bytes_3 = 0;
+        unsigned char bytes_4 = 0;
+        bytes_1 = (0xF0 | ((u >> 18) & 0xFF)); // 0xF0 11110000  0xFF 11111111
+        bytes_2 = (0x80 | ((u >> 12) & 0x3F)); // 0x80 10000000  0x3F 00111111
+        bytes_3 = (0x80 | ((u >> 6) & 0x3F));  // 0x80 10000000  0x3F 00111111
+        bytes_4 = (0x80 | ( u & 0x3F));        // 0x80 10000000  0x3F 00111111
+
+        PUTC(c, bytes_1); 
+        PUTC(c, bytes_2);
+        PUTC(c, bytes_3);
+        PUTC(c, bytes_4);
+    }
 }
 
 #define STRING_ERROR(ret) do { c->top = head; return ret; } while(0)
@@ -129,6 +218,21 @@ static int lept_parse_string(lept_context* c, lept_value* v) {
                         if (!(p = lept_parse_hex4(p, &u)))
                             STRING_ERROR(LEPT_PARSE_INVALID_UNICODE_HEX);
                         /* \TODO surrogate handling */
+                        // 如果这个数满足高代理项 U+D800 至 U+DBFF
+                        if (u >= 0xD800 && u <= 0xDBFF) {
+                            unsigned h = u;
+                            if (*p == '\\') p++;
+                            if (*p == 'u') p++;
+                            if (!(p = lept_parse_hex4(p, &u)))
+                                STRING_ERROR(LEPT_PARSE_INVALID_UNICODE_SURROGATE);
+                            // 如果后面有16进制数且大小满足U+DC00 至 U+DFFF
+                            // 转换为码点 (H, L)
+                            // codepoint = 0x10000 + (H - 0xD800) * 0x400 + (L - 0xDC00)
+                            if (u >= 0xDC00 && u <= 0xDFFF) {
+                                u = 0x10000 + (h - 0xD800) * 0x400 + (u - 0xDC00);
+                            }else
+                                STRING_ERROR(LEPT_PARSE_INVALID_UNICODE_SURROGATE);
+                        }
                         lept_encode_utf8(c, u);
                         break;
                     default:

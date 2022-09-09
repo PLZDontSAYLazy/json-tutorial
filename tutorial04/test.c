@@ -206,6 +206,7 @@ static void test_parse_invalid_unicode_surrogate() {
 }
 
 static void test_parse() {
+    
     test_parse_null();
     test_parse_true();
     test_parse_false();
@@ -218,6 +219,7 @@ static void test_parse() {
     test_parse_missing_quotation_mark();
     test_parse_invalid_string_escape();
     test_parse_invalid_string_char();
+    
     test_parse_invalid_unicode_hex();
     test_parse_invalid_unicode_surrogate();
 }
