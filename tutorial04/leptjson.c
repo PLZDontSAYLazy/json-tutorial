@@ -95,13 +95,15 @@ static int lept_parse_number(lept_context* c, lept_value* v) {
 解析 4 位十六进数字】
 p 有效数字必须4位
 p 格式为0123\"
+下面是自己的解法
 */
+#if 0
 static const char* lept_parse_hex4(const char* p, unsigned* u) {
     /* \TODO */
     int len = 0;
     const char* tmp = p;
     unsigned int factor = 1;
-    // 原代码：
+    
     while (*p != '\0' && *p != '\"' && *p != '\\') {
         if (len == 4)
             break;
@@ -116,18 +118,39 @@ static const char* lept_parse_hex4(const char* p, unsigned* u) {
     for (; len >= 0; --len) {
         if (tmp[len] >= '0' && tmp[len] <= '9')
             *u += (tmp[len] - '0') * factor;
-        else if ( (tmp[len] >= 'A' && tmp[len] <= 'F') || (tmp[len] >= 'a' && tmp[len] <= 'f')) {
-            if(tmp[len] >= 'A' && tmp[len] <= 'F')
-                *u += (10 + tmp[len] - 'A') * factor;
-            else 
-                *u += (10 + tmp[len] - 'a') * factor;
-        }
+        else if (tmp[len] >= 'A' && tmp[len] <= 'F')
+            *u += (10 + tmp[len] - 'A') * factor;
+        else if (tmp[len] >= 'a' && tmp[len] <= 'f')
+            *u += (10 + tmp[len] - 'a') * factor;
         else
             return NULL;
         factor *= 16;
     }
     return p;
 }
+#endif
+
+// 下面是答案里面的解法
+static const char* lept_parse_hex4(const char* p, unsigned* u) {
+    int i;
+    *u = 0;
+    for (i = 0; i < 4; ++i) {
+        char ch = *p++;
+        // 每次左移4位
+        // 为什么左移4位 因为4位2进制数表示一个16进制数
+        *u <<= 4;
+        // 注意 实现16到2进制的转换是通过|操作进行的
+        // 因为 x|0 = x
+        // ch - ('A' - 10) 相当于 ch - 'A' + 10
+        if      (ch >= '0' && ch <= '9') *u |= ch - '0';
+        else if (ch >= 'A' && ch <= 'F') *u |= ch - ('A' - 10);
+        else if (ch >= 'a' && ch <= 'f') *u |= ch - ('a' - 10);
+        else return NULL;
+    }
+    return p;
+}
+
+
 /*
 实现UTF-8编码
 得到码点后转换为UTF-8的数据
@@ -143,8 +166,19 @@ static void lept_encode_utf8(lept_context* c, unsigned u) {
     // 下面根据u的大小来转化位不同的UTF-8格式
     // 0x7F 1111111 7位
     if (u >= 0x0000 && u <= 0x7F) {
+        /* 
+        // 原代码
         unsigned char bytes_1 = u;
         PUTC(c, bytes_1);
+        */
+
+        // 答案中的代码
+        // 为什么要做 x & 0xFF 这种操作呢？
+        // 这是因为 u 是 unsigned 类型，一些编译器可能会警告这个转型可能会截断数据。
+        // 但实际上，配合了范围的检测然后右移之后，可以保证写入的是 0~255 内的值。
+        // 为了避免一些编译器的警告误判，我们加上 x & 0xFF。
+        // 一般来说，编译器在优化之后，这与操作是会被消去的，不会影响性能。
+        PUTC(c, u & 0xFF);
     }
     // 0x7FF 11111111111 11位
     else if (u >= 0x0080 && u <= 0x07FF) {
@@ -221,8 +255,14 @@ static int lept_parse_string(lept_context* c, lept_value* v) {
                         // 如果这个数满足高代理项 U+D800 至 U+DBFF
                         if (u >= 0xD800 && u <= 0xDBFF) {
                             unsigned h = u;
+                            /*
+                            //原代码
                             if (*p == '\\') p++;
                             if (*p == 'u') p++;
+                            */
+                            // 修改后的代码
+                            if(*p++ != '\\') STRING_ERROR(LEPT_PARSE_INVALID_UNICODE_SURROGATE);
+                            if(*p++ != 'u')  STRING_ERROR(LEPT_PARSE_INVALID_UNICODE_SURROGATE);
                             if (!(p = lept_parse_hex4(p, &u)))
                                 STRING_ERROR(LEPT_PARSE_INVALID_UNICODE_SURROGATE);
                             // 如果后面有16进制数且大小满足U+DC00 至 U+DFFF
