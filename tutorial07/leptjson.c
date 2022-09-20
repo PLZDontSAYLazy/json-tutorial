@@ -346,22 +346,117 @@ int lept_parse(lept_value* v, const char* json) {
     return ret;
 }
 
+#if 0
 static void lept_stringify_string(lept_context* c, const char* s, size_t len) {
     /* ... */
+    size_t curr_len = 0;
+    PUTS(c, "\"", 1);
+    for ( ; curr_len < len; curr_len++) {
+        const char ch = *s;
+        switch (ch) {
+        case '\n': PUTS(c, "\\n", 2); break;
+        case '\\': PUTS(c, "\\\\", 2); break;
+        case '\b': PUTS(c, "\\b", 2); break;
+        case '\f': PUTS(c, "\\f", 2); break;
+        case '\r': PUTS(c, "\\r", 2); break;
+        case '\t': PUTS(c, "\\t", 2); break;
+        case '\"': PUTS(c, "\\\"", 2); break;
+        case '/': PUTS(c, "/", 1); break;
+        default:
+            // 此处有待解决
+            if (ch < 0x20) {
+                // 解决方法如下
+                char buffer[7];
+                sprintf(buffer, "\\u%04X", ch);
+                PUTS(c, buffer, 6);
+                break;
+            }
+            PUTS(c, s[curr_len], 1);
+            break;
+        }
+        s++;
+    }
+    PUTS(c, "\"", 1);
+    return;
+}
+#endif
+
+// 优化后的代码
+// 两个优化点：
+// 一是一次性分配足够大小的空间
+// 二是手写16进制数字解析减少调用sprintf的开销
+static void lept_stringify_string(lept_context* c, const char* s, size_t len) {
+    static const char hex_digits[] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
+    size_t i, size;
+    char* head, * p;
+    assert(s != NULL);
+    p = head = lept_context_push(c, size = len * 6 + 2);
+    *p++ = '"';
+    for (i = 0; i < len; i++) {
+        unsigned char ch = (unsigned char)s[i];
+        switch (ch) {
+        case '\"': *p++ = '\\'; *p++ = '\"'; break;
+        case '\\': *p++ = '\\'; *p++ = '\\'; break;
+        case '\b': *p++ = '\\'; *p++ = 'b'; break;
+        case '\f': *p++ = '\\'; *p++ = 'f'; break;
+        case '\n': *p++ = '\\'; *p++ = 'n'; break;
+        case '\r': *p++ = '\\'; *p++ = 'r'; break;
+        case '\t': *p++ = '\\'; *p++ = 't'; break;
+        default:
+            if (ch < 0x20) {
+                *p++ = '\\'; *p++ = 'u'; *p++ = '0'; *p++ = '0';
+                *p++ = hex_digits[ch >> 4];
+                *p++ = hex_digits[ch & 15];
+            }
+            else
+                *p++ = s[i];
+        }
+    }
+    *p++ = '"';
+    c->top -= size - (p - head);
 }
 
 static void lept_stringify_value(lept_context* c, const lept_value* v) {
+    size_t i = 0;
     switch (v->type) {
         case LEPT_NULL:   PUTS(c, "null",  4); break;
         case LEPT_FALSE:  PUTS(c, "false", 5); break;
         case LEPT_TRUE:   PUTS(c, "true",  4); break;
-        case LEPT_NUMBER: c->top -= 32 - sprintf(lept_context_push(c, 32), "%.17g", v->u.n); break;
+        case LEPT_NUMBER: 
+            /*
+            * 下面是教程中的详细的代码
+            */
+        /*{
+            char buffer[32]; 
+            int length = sprintf(buffer, "%.17g", v->u.n);
+            PUTS(c, buffer, length);
+            break;
+        }*/
+            c->top -= 32 - sprintf(lept_context_push(c, 32), "%.17g", v->u.n); break;
         case LEPT_STRING: lept_stringify_string(c, v->u.s.s, v->u.s.len); break;
         case LEPT_ARRAY:
             /* ... */
+            PUTS(c, "[", 1);
+            for (i = 0; i < v->u.a.size; ++i) {
+                lept_stringify_value(c, &v->u.a.e[i]);
+                if(i != v->u.a.size - 1)
+                    PUTS(c, ",", 1);
+            }
+            PUTS(c, "]", 1);
             break;
         case LEPT_OBJECT:
             /* ... */
+            PUTS(c, "{", 1);
+            for (i = 0; i < v->u.o.size; ++i) {
+                PUTS(c, "\"", 1);
+                PUTS(c, v->u.o.m[i].k, v->u.o.m[i].klen);
+                PUTS(c, "\"", 1);
+                PUTS(c, ":", 1);
+                lept_stringify_value(c, &v->u.o.m[i].v);
+                if(i != v->u.o.size - 1)
+                    PUTS(c, ",", 1);
+            }
+            PUTS(c, "}", 1);
             break;
         default: assert(0 && "invalid type");
     }
