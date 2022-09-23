@@ -424,7 +424,7 @@ void lept_copy(lept_value* dst, const lept_value* src) {
             break;
         case LEPT_ARRAY:
             /* \todo */
-            // 尝试递归的调用lept_copy来完成拷贝过程
+            /* 尝试递归的调用lept_copy来完成拷贝过程 */
             lept_set_array(dst, src->u.a.size);
             for (; i < src->u.a.size; ++i) {
                 lept_copy(lept_pushback_array_element(dst), &src->u.a.e[i]);
@@ -432,10 +432,10 @@ void lept_copy(lept_value* dst, const lept_value* src) {
             break;
         case LEPT_OBJECT:
             /* \todo */
-            // 同样 尝试递归的使用lept_copy来完成拷贝过程
+            /*同样 尝试递归的使用lept_copy来完成拷贝过程*/ 
             lept_set_object(dst, src->u.o.capacity);
             for (; i < src->u.o.size; ++i) {
-                // 使用size_t的时候 注意如果传地址也能接受
+                /* 使用size_t的时候 注意如果传地址也能接受 */ 
                 lept_copy(lept_set_object_value(dst, src->u.o.m[i].k, src->u.o.m[i].klen), &src->u.o.m[i].v);
             }
             break;
@@ -633,7 +633,7 @@ void lept_popback_array_element(lept_value* v) {
 lept_value* lept_insert_array_element(lept_value* v, size_t index) {
     assert(v != NULL && v->type == LEPT_ARRAY && index <= v->u.a.size);
     /* \todo */
-    // 检查当前容量是不是已经分配完 是的话容量变为原来的2倍
+    /*检查当前容量是不是已经分配完 是的话容量变为原来的2倍*/ 
     if (v->u.a.capacity == v->u.a.size)
         lept_reserve_array(v, v->u.a.capacity == 0 ? 1 : v->u.a.capacity * 2);
     v->u.a.size++;
@@ -649,12 +649,12 @@ void lept_erase_array_element(lept_value* v, size_t index, size_t count) {
     /* \todo */
     size_t i = 0;
     size_t corr_item_loc = index + count;
-    // 清除数据
+    /*清除数据*/ 
     for (; i < count; ++i) {
         lept_free(&v->u.a.e[index]);
         index++;
     }
-    // 清除数据之后需要把后面的数据前移
+    /*清除数据之后需要把后面的数据前移*/ 
     while(count != 0 && corr_item_loc < v->u.a.size){
         lept_type type = v->u.a.e[corr_item_loc].type;
         lept_move(&v->u.a.e[corr_item_loc - count], &v->u.a.e[corr_item_loc]);
@@ -680,15 +680,15 @@ size_t lept_get_object_size(const lept_value* v) {
 size_t lept_get_object_capacity(const lept_value* v) {
     assert(v != NULL && v->type == LEPT_OBJECT);
     /* \todo */
-    // 直接返回capacity
+    /*直接返回capacity*/ 
     return v->u.o.capacity;
 }
 
 void lept_reserve_object(lept_value* v, size_t capacity) {
     assert(v != NULL && v->type == LEPT_OBJECT);
     /* \todo */
-    // 重新分配JSON对象的空间
-    // 先比较当前的空间与新空间的大小关系
+    /* 重新分配JSON对象的空间 */ 
+    /* 先比较当前的空间与新空间的大小关系 */ 
     if (v->u.o.capacity < capacity) {
         v->u.o.capacity = capacity;
         v->u.o.m = (lept_member*)realloc(v->u.o.m, v->u.o.capacity * sizeof(lept_member));
@@ -698,15 +698,15 @@ void lept_reserve_object(lept_value* v, size_t capacity) {
 void lept_shrink_object(lept_value* v) {
     assert(v != NULL && v->type == LEPT_OBJECT);
     /* \todo */
-    // 当不再向对象里面添加数据时收缩空间
-    // 比较对象的有效元素与容量的大小关系
+    /*当不再向对象里面添加数据时收缩空间*/ 
+    /*比较对象的有效元素与容量的大小关系*/ 
     if (v->u.o.capacity > v->u.o.size) {
         v->u.o.capacity = v->u.o.size;
         v->u.o.m = (lept_member*)realloc(v->u.o.m, v->u.o.capacity * sizeof(lept_member));
     }
 }
 
-// 递归的清空对象
+/*递归的清空对象*/ 
 void lept_clear_object(lept_value* v) {
     assert(v != NULL && v->type == LEPT_OBJECT);
     /* \todo */
@@ -750,8 +750,8 @@ lept_value* lept_find_object_value(lept_value* v, const char* key, size_t klen) 
     return index != LEPT_KEY_NOT_EXIST ? &v->u.o.m[index].v : NULL;
 }
 
-// 如果要设置一个对象的value
-// 连同这个对象的 键 以及 值一起设置
+/*如果要设置一个对象的value*/ 
+/*连同这个对象的 键 以及 值一起设置*/ 
 lept_value* lept_set_object_value(lept_value* v, const char* key, size_t klen) {
     assert(v != NULL && v->type == LEPT_OBJECT && key != NULL);
     /* \todo */
@@ -781,7 +781,7 @@ void lept_remove_object_value(lept_value* v, size_t index) {
             ++index;
         }
     }
-    // 最后释放index位置的元素中的键所指的空间
+    /*最后释放index位置的元素中的键所指的空间*/ 
     free(v->u.o.m[index].k);
     v->u.o.m[index].k = NULL;
     v->u.o.size--;
